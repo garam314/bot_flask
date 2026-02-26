@@ -1,5 +1,7 @@
 help:
-  "!clima": Comuna/Ciudad, Region/Provincia, Pais
+  "!clima": Comuna/Ciudad, Pais Obtiene Informacino Climatologica
+  "!chiste": Obtiene Chiste al Azar
+  "!help": Lista Ayuda
 topic:
   - "chavo del 8, chavo"
   - "chapulin colorado, chapulin"

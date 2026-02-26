@@ -4,10 +4,14 @@ import os
 import random
 from time import sleep
 from deep_translator import GoogleTranslator
+from flask import current_app
+import logging
 
-def get_msg_server_respond(code:int, msg:str=None, topic:tuple=None):
+logger = logging.getLogger(__name__)
+
+def get_msg_server_respond(code:int, msg:str=None, error:bool = False):
     status_msg = None
-    meme = None
+    meme = ""
     match code:
         case 500:
             status_msg = 'Internal Server Error'
@@ -47,11 +51,15 @@ def get_msg_server_respond(code:int, msg:str=None, topic:tuple=None):
             status_msg = 'No Content'
         case _:
             status_msg = 'Code Not Found'
-            
-    if topic:
-        meme = get_meme_random(topic)
+    if error:        
+        meme = get_meme_random(current_app.config["BOT_CFG"])
         
-    _dict = {"respond": status_msg, "code": code, "msg": msg, "meme": meme}
+    _dict = {"code": code, "msg": (status_msg if error else msg), "error": error, "meme": meme}
+    
+    if error:
+        logger.error(_dict)
+    else:
+        logger.info(_dict)
     
     return _dict
 
@@ -75,7 +83,8 @@ def get_geographical_position(comuna:str, pais:str):
         comuna= row.get("admin3"),
         provincia= row.get("admin2"),
         region= row.get("admin1"),
-        pais= row.get("country")
+        pais= row.get("country"),
+        zone = row.get("name")
         ) for row in resp.get("results", [])]
 
     return _list
@@ -83,7 +92,7 @@ def get_geographical_position(comuna:str, pais:str):
 
 def get_weather_api(zones:list):    
     url = "https://api.open-meteo.com/v1/forecast"
-    resp_list = list()
+    final = ""
     for row in zones:
         payload ={
             "latitude": row["latitude"],
@@ -93,26 +102,22 @@ def get_weather_api(zones:list):
         _json = requests.get(url, params=payload).json()
         
         if _json.get("current", {}):
-            _dict = dict(
-                    temp = f"{_json['current']['apparent_temperature']} {_json['current_units']['apparent_temperature']}",
-                    humidity = f"{_json['current']['relative_humidity_2m']} {_json['current_units']['relative_humidity_2m']}",
-                    zone = f"{row['comuna']}, {row['provincia']}, {row['region']}, {row['pais']}"
-                    )
-            resp_list.append(_dict)
-        sleep(1)
-    return resp_list
+            zone = f"{row['zone']}, {row['comuna']}, {row['provincia']}, {row['region']}, {row['pais']}"
+            desc = f"{_json['current']['apparent_temperature']} {_json['current_units']['apparent_temperature']}"
+            final += f"{zone}: {desc}\n"
+            sleep(1)    
+    return final
 
 def get_joke_api():
     url = "https://v2.jokeapi.dev/joke/Any"
     res = requests.get(url).json()
-    
+    final = ''
     if res.get("setup", {}):
-        res["setup"] = GoogleTranslator(source='auto', target='es').translate(res.get("setup"))
-        res["delivery"] = GoogleTranslator(source='auto', target='es').translate(res.get("delivery"))
+        final = f"{GoogleTranslator(source='auto', target='es').translate(res.get("setup"))}\nResp: {GoogleTranslator(source='auto', target='es').translate(res.get("delivery"))}"
     elif res.get("joke", {}):
-        res["joke"] = GoogleTranslator(source='auto', target='es').translate(res.get("joke"))
+        final = f"{GoogleTranslator(source='auto', target='es').translate(res.get("joke"))}"
     
-    return res
+    return final
 
 def get_meme_random(topic:tuple):
     _return  = None
