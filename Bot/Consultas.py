@@ -20,6 +20,7 @@ def get_help():
             resp = yaml.safe_load(file)
     except Exception as e:
         logger.error(traceback.format_exc())
+        print(traceback.format_exc())
         resp = get_msg_server_respond(400)
         
     return resp
@@ -52,6 +53,7 @@ def get_weather(location):
         
     except Exception:
         logger.error(traceback.format_exc())
+        print(traceback.format_exc())
         resp = get_msg_server_respond(400)
         return resp
     
@@ -62,6 +64,7 @@ def get_joke():
     if _json.get("error", False):
         resp = get_msg_server_respond(400)
         logger.error(resp['additionalInfo'])
+        print(traceback.format_exc())
     else:
         resp = get_msg_server_respond(200)
         resp['data'] = {}
