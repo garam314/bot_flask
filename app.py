@@ -13,4 +13,4 @@ app = Flask(__name__)
 app.register_blueprint(bp_request)
 
 if __name__ == '__main__':
-    app.run(debug=True, host="192.168.106.160", port=9998)
+    app.run(debug=True)
