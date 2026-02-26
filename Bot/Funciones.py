@@ -1,8 +1,13 @@
 import json
 import requests
+import os
+import random
+from time import sleep
+from deep_translator import GoogleTranslator
 
-def get_msg_server_respond(code:int, msg:str=None):
+def get_msg_server_respond(code:int, msg:str=None, topic:tuple=None):
     status_msg = None
+    meme = None
     match code:
         case 500:
             status_msg = 'Internal Server Error'
@@ -43,47 +48,92 @@ def get_msg_server_respond(code:int, msg:str=None):
         case _:
             status_msg = 'Code Not Found'
             
-    _dict = {"respond": status_msg, "code": code, "msg": (msg or "")}
+    if topic:
+        meme = get_meme_random(topic)
+        
+    _dict = {"respond": status_msg, "code": code, "msg": msg, "meme": meme}
     
     return _dict
 
 def get_geographical_position(comuna:str, pais:str):
     
-    latitude = None
-    longitude = None
+    _list = []
     
     url = "https://geocoding-api.open-meteo.com/v1/search"
     payload ={
         "name": comuna,
-        "count": 1,
+        "count": 10,
         "language": "es",
         "format": "json",
         "countryCode": pais
     }
     
     resp = requests.get(url, params=payload).json()
-    if len(resp.get("results", [])) > 0:
-        latitude = resp["results"][0].get("latitude")
-        longitude = resp["results"][0].get("longitude")
+    _list = [dict(
+        latitude=row.get("latitude"),
+        longitude = row.get("longitude"),
+        comuna= row.get("admin3"),
+        provincia= row.get("admin2"),
+        region= row.get("admin1"),
+        pais= row.get("country")
+        ) for row in resp.get("results", [])]
 
-    return latitude, longitude
+    return _list
 
 
-def get_weather_api(lat, lon):    
+def get_weather_api(zones:list):    
     url = "https://api.open-meteo.com/v1/forecast"
-    payload ={
-        "latitude": lat,
-        "longitude": lon,
-        "current": "precipitation,is_day,apparent_temperature,wind_speed_10m,relative_humidity_2m"
-    }
-    resp = requests.get(url, params=payload).json()
-    return resp
+    resp_list = list()
+    for row in zones:
+        payload ={
+            "latitude": row["latitude"],
+            "longitude": row["longitude"],
+            "current": "precipitation,is_day,apparent_temperature,wind_speed_10m,relative_humidity_2m"
+        }
+        _json = requests.get(url, params=payload).json()
+        
+        if _json.get("current", {}):
+            _dict = dict(
+                    temp = f"{_json['current']['apparent_temperature']} {_json['current_units']['apparent_temperature']}",
+                    humidity = f"{_json['current']['relative_humidity_2m']} {_json['current_units']['relative_humidity_2m']}",
+                    zone = f"{row['comuna']}, {row['provincia']}, {row['region']}, {row['pais']}"
+                    )
+            resp_list.append(_dict)
+        sleep(1)
+    return resp_list
 
 def get_joke_api():
     url = "https://v2.jokeapi.dev/joke/Any"
-    payload ={
-        "lang": "es",
-        "blacklistFlags": "nsfw,religious,political,racist,sexist,explicit"
-    }
-    res = requests.get(url, params = payload).json()
+    res = requests.get(url).json()
+    
+    if res.get("setup", {}):
+        res["setup"] = GoogleTranslator(source='auto', target='es').translate(res.get("setup"))
+        res["delivery"] = GoogleTranslator(source='auto', target='es').translate(res.get("delivery"))
+    elif res.get("joke", {}):
+        res["joke"] = GoogleTranslator(source='auto', target='es').translate(res.get("joke"))
+    
     return res
+
+def get_meme_random(topic:tuple):
+    _return  = None
+    API_KEY = os.getenv("API_KEY") 
+    
+    queries = [
+        "chavo del 8, chavo",
+        "chapulin colorado, chapulin"
+    ]
+
+    query = random.choice(queries)
+
+    url = "https://api.giphy.com/v1/gifs/random"
+    params = {
+        "api_key": API_KEY,
+        "tag": query,
+        "rating": "g"
+    }
+    res = requests.get(url, params=params).json()
+    data = res.get("data", [])
+    if data.get("images", {}).get("downsized", {}).get("url", {}):
+        _return = data["images"]["downsized"]["url"]
+    
+    return _return

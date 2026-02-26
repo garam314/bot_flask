@@ -1,28 +1,24 @@
-from flask import Blueprint, render_template, request
-import yaml
+from flask import Blueprint, render_template, request, jsonify, current_app
 import json
 import logging
 import traceback
 import pycountry
 import re
-from .Funciones import get_msg_server_respond, get_geographical_position, get_weather_api, get_joke_api
+import os
+from .Funciones import get_msg_server_respond, get_geographical_position, get_weather_api, get_joke_api, get_indicators
 
 logger = logging.getLogger(__name__)
-
 bp_request = Blueprint("request", __name__, url_prefix="/requests")
-
 
 def get_help():    
     resp = None
-    
     try:
-        with open(r"Bot\help.yaml", "r", encoding="utf-8") as file:
-            resp = yaml.safe_load(file)
+        with open("Bot/Config.yaml", "r", encoding="utf-8") as file:
+            _dict = yaml.safe_load(file)
+            resp = _dict.get("help", get_msg_server_respond(500, topic=current_app.config["BOT_CFG"]))
     except Exception as e:
         logger.error(traceback.format_exc())
-        print(traceback.format_exc())
-        resp = get_msg_server_respond(400)
-        
+        resp = get_msg_server_respond(400, topic=current_app.config["BOT_CFG"])
     return resp
 
 def get_weather(location):
@@ -33,28 +29,25 @@ def get_weather(location):
         if match:
             ciudad, pais = match.groups()
         else:
-            resp = get_msg_server_respond(400, "MAL FORMADO")
+            resp = get_msg_server_respond(400, msg="MAL FORMADO", topic=current_app.config["BOT_CFG"])
             return resp
-        
-        code_country = pycountry.countries.get(name=pais)
-        lat, lon = get_geographical_position(ciudad, code_country.alpha_2)
-        _json = get_weather_api(lat, lon)
 
-        if _json.get('error', False):
-            resp = get_msg_server_respond(400, resp["reason"])
+        code_country = pycountry.countries.get(name=pais)
+        zones = get_geographical_position(ciudad, code_country.alpha_2)
+        list_weather = get_weather_api(zones)
+
+        if not list_weather:
+            resp = get_msg_server_respond(400, topic = current_app.config["BOT_CFG"])
         else:
             resp = get_msg_server_respond(200)
-            resp['data'] = dict(
-                temp = f"{_json['current']['apparent_temperature']} {_json['current_units']['apparent_temperature']}",
-                humidity = f"{_json['current']['relative_humidity_2m']} {_json['current_units']['relative_humidity_2m']}",
-                )
-        
+            resp['data'] = list_weather
+                    
         return resp            
         
     except Exception:
         logger.error(traceback.format_exc())
         print(traceback.format_exc())
-        resp = get_msg_server_respond(400)
+        resp = get_msg_server_respond(400, topic=current_app.config["BOT_CFG"])
         return resp
     
 def get_joke():
@@ -62,7 +55,7 @@ def get_joke():
     resp = None
     
     if _json.get("error", False):
-        resp = get_msg_server_respond(400)
+        resp = get_msg_server_respond(400, topic=current_app.config["BOT_CFG"])
         logger.error(resp['additionalInfo'])
         print(traceback.format_exc())
     else:
@@ -77,21 +70,25 @@ def get_joke():
 
 @bp_request.route("/", methods=["POST"])
 def managment_request():
-    msg = request.form.get("command", default=None)
+    msg = request.args.get("command", default=None)
     resp = None
     if not msg:
-        resp = get_msg_server_respond(400)
-        
-    if msg.startswith('!'):
-        command = msg.split(" ")[0].lower()
-        match command:
-            case "!help":
-                resp = get_help()
-            case "!clima":
-                try:
-                    resp = get_weather(" ".join(msg.split(" ")[1:]))                    
-                except IndexError:
-                    resp = get_msg_server_respond(400, "y yo adivino que clima quieres ver")
-            case "!chiste":
-                resp = get_joke()
-    return json.dumps(resp)
+        resp = get_msg_server_respond(400, topic=current_app.config["BOT_CFG"])
+    else:
+        if msg.startswith('!'):
+            command = msg.split(" ")[0].lower()
+            match command:
+                case "!help":
+                    resp = get_help()
+                case "!clima":
+                    lugar = msg.split(" ")[1:]
+                    if not lugar:
+                        resp = get_msg_server_respond(400, msg = "y yo adivino que clima quieres ver", topic=current_app.config["BOT_CFG"])
+                    else:
+                        resp = get_weather(" ".join(lugar))
+                        
+                case "!chiste":
+                    resp = get_joke()
+                case _:
+                    resp = get_msg_server_respond(404, topic=current_app.config["BOT_CFG"])
+    return jsonify(resp)
